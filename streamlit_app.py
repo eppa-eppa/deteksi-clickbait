@@ -2,7 +2,7 @@
 #  streamlit_app.py  —  Aplikasi Demo (Streamlit)
 #
 #  Model dibaca dari saved_model.pkl (hasil training VSCode).
-#  Menampilkan metrik: CV (Step 3) + Final Test (Step 4).
+#  Menampilkan metrik: Accuracy, Precision, Recall, F1-Score.
 #
 #  Jalankan lokal : streamlit run streamlit_app.py
 #  Deploy         : https://streamlit.io/cloud
@@ -14,7 +14,7 @@ from model_utils import load_model, model_exists, predict
 
 # ── Konfigurasi halaman ──────────────────────────────────────
 st.set_page_config(
-    page_title="Deteksi Clickbait",
+    page_title="Clickbait Detector",
     page_icon="🔍",
     layout="centered",
 )
@@ -36,25 +36,15 @@ st.markdown("""
     .main-header h1 { margin: 0; font-size: 1.9rem; letter-spacing: 1px; }
     .main-header p  { margin: 8px 0 0; opacity: 0.85; font-size: 0.9rem; }
 
-    .step-label {
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: #78909C;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin: 16px 0 8px 0;
-    }
-
-    /* Metrik final test */
     .metric-box {
         background: #F0F4FF;
         border: 1px solid #C5CAE9;
         border-radius: 12px;
-        padding: 14px 8px;
+        padding: 18px 8px;
         text-align: center;
     }
     .metric-box .val {
-        font-size: 1.55rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: #1A237E;
         line-height: 1.2;
@@ -62,33 +52,11 @@ st.markdown("""
     .metric-box .lbl {
         font-size: 0.72rem;
         color: #546E7A;
-        margin-top: 4px;
+        margin-top: 5px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
-    /* Metrik cross-validation */
-    .cv-box {
-        background: #F3F3FF;
-        border: 1px solid #C5CAE9;
-        border-radius: 12px;
-        padding: 14px 16px;
-        text-align: center;
-    }
-    .cv-box .cv-val {
-        font-size: 1.55rem;
-        font-weight: 700;
-        color: #283593;
-    }
-    .cv-box .cv-lbl {
-        font-size: 0.72rem;
-        color: #546E7A;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-top: 4px;
-    }
-
-    /* Hasil deteksi */
     .result-clickbait {
         background: #FFF3F3;
         border: 1.5px solid #EF9A9A;
@@ -133,7 +101,7 @@ if st.session_state.model is None and model_exists():
 # ── Header ───────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
-    <h1>🔍 Clickbait Detector</h1>
+    <h1>🔍 Deteksi Clicbait</h1>
     <p>Deteksi judul berita <em>clickbait</em> menggunakan<br>
     Gradient Boosting + TF-IDF Character N-gram</p>
 </div>
@@ -183,52 +151,9 @@ with st.sidebar:
     st.caption("Model dilatih di VSCode lalu di-deploy via GitHub.")
 
 
-# ── Panel metrik ─────────────────────────────────────────────
+# ── Panel metrik (hanya Accuracy, Precision, Recall, F1) ────
 if st.session_state.metrics:
     m = st.session_state.metrics
-
-    # ── Step 3: Cross-Validation ──
-    st.markdown(
-        '<p class="step-label">Step 3 — 5-Fold Cross-Validation '
-        '(pada Training Set)</p>',
-        unsafe_allow_html=True
-    )
-
-    cv_scores = m.get("cv_scores", [])
-    cv_mean   = m.get("cv_mean",   "—")
-    cv_std    = m.get("cv_std",    "—")
-
-    col_mean, col_std = st.columns(2)
-    with col_mean:
-        st.markdown(f"""
-        <div class="cv-box">
-            <div class="cv-lbl">Mean CV Accuracy</div>
-            <div class="cv-val">{cv_mean}%</div>
-        </div>""", unsafe_allow_html=True)
-    with col_std:
-        st.markdown(f"""
-        <div class="cv-box">
-            <div class="cv-lbl">Std Deviation</div>
-            <div class="cv-val">± {cv_std}%</div>
-        </div>""", unsafe_allow_html=True)
-
-    if cv_scores:
-        scores_str = "   |   ".join(
-            [f"Fold {i+1}: {s}%" for i, s in enumerate(cv_scores)]
-        )
-        st.markdown(
-            f"<p style='text-align:center;color:#607D8B;"
-            f"font-size:0.79rem;font-family:monospace;margin-top:8px;'>"
-            f"{scores_str}</p>",
-            unsafe_allow_html=True
-        )
-
-    # ── Step 4: Final Test ──
-    st.markdown(
-        '<p class="step-label">Step 4 — Final Test '
-        '(pada Testing Set)</p>',
-        unsafe_allow_html=True
-    )
 
     c1, c2, c3, c4 = st.columns(4)
     for col, val, label in zip(
@@ -245,7 +170,7 @@ if st.session_state.metrics:
 
     st.markdown(
         f"<p style='text-align:center;color:#90A4AE;font-size:0.77rem;"
-        f"margin-top:6px;'>"
+        f"margin-top:8px;'>"
         f"Train: {m['train_size']:,} data  •  "
         f"Test: {m['test_size']:,} data  •  "
         f"Total: {m['total_size']:,} data</p>",
