@@ -1,12 +1,13 @@
 # ============================================================
 #  app.py  —  Aplikasi Desktop (VSCode / Tkinter)
 #
-#  TUJUAN: Melatih model dan menyimpannya ke disk.
-#  Setelah training selesai, upload saved_model.pkl dan
-#  saved_metrics.pkl ke GitHub untuk dipakai Streamlit.
+#  Alur training:
+#    Step 1 : Split dataset (80:20)
+#    Step 2 : Training pada training set
+#    Step 3 : 5-Fold CV pada training set
+#    Step 4 : Final test pada testing set
 #
-#  Jalankan: python app.py
-#  Python  : 3.11
+#  Jalankan: python app.py  |  Python: 3.11
 # ============================================================
 
 import threading
@@ -23,7 +24,7 @@ class ClickbaitApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Clickbait Detector — Mode Training (VSCode)")
-        self.root.geometry("740x640")
+        self.root.geometry("760x720")
         self.root.resizable(False, False)
         self.root.configure(bg="#F0F2F5")
 
@@ -59,23 +60,23 @@ class ClickbaitApp:
         )
         self.status_label.pack(side="right", padx=2)
 
-        # ── Banner info ──
+        # ── Banner ──
         banner = tk.Frame(self.root, bg="#E8F5E9")
         banner.pack(fill="x")
         tk.Label(
             banner,
-            text="💡  Mode VSCode: Latih model di sini, lalu upload "
-                 "saved_model.pkl & saved_metrics.pkl ke GitHub untuk Streamlit.",
+            text="💡  Mode VSCode: Latih model di sini → upload "
+                 "saved_model.pkl & saved_metrics.pkl ke GitHub → deploy Streamlit.",
             font=("Segoe UI", 9), bg="#E8F5E9", fg="#2E7D32"
         ).pack(padx=16, pady=6)
 
         # ── Frame utama ──
         main = tk.Frame(self.root, bg="#F0F2F5")
-        main.pack(fill="both", expand=True, padx=20, pady=15)
+        main.pack(fill="both", expand=True, padx=20, pady=12)
 
-        # Card input deteksi
+        # ── Card input deteksi ──
         ic = self._card(main)
-        ic.pack(fill="x", pady=(0, 12))
+        ic.pack(fill="x", pady=(0, 10))
 
         tk.Label(
             ic, text="Coba Deteksi Judul Berita (Bahasa Inggris)",
@@ -84,7 +85,7 @@ class ClickbaitApp:
         ).pack(anchor="w", padx=15, pady=(12, 4))
 
         self.input_text = tk.Text(
-            ic, height=4, font=("Segoe UI", 11),
+            ic, height=3, font=("Segoe UI", 11),
             bg="#F5F5F5", fg="#212121",
             relief="flat", bd=0, padx=10, pady=8, wrap="word"
         )
@@ -92,14 +93,14 @@ class ClickbaitApp:
         self.input_text.bind("<Return>", self._on_enter)
 
         bf = tk.Frame(ic, bg="white")
-        bf.pack(fill="x", padx=15, pady=(4, 12))
+        bf.pack(fill="x", padx=15, pady=(4, 10))
 
         self.detect_btn = tk.Button(
             bf, text="  Deteksi Sekarang  ",
             font=("Segoe UI", 11, "bold"),
             bg="#1A237E", fg="white", activebackground="#283593",
             relief="flat", cursor="hand2",
-            command=self._detect, padx=8, pady=6
+            command=self._detect, padx=8, pady=5
         )
         self.detect_btn.pack(side="left")
 
@@ -107,51 +108,86 @@ class ClickbaitApp:
             bf, text="Hapus", font=("Segoe UI", 10),
             bg="#ECEFF1", fg="#546E7A", activebackground="#CFD8DC",
             relief="flat", cursor="hand2",
-            command=self._clear, padx=8, pady=6
+            command=self._clear, padx=8, pady=5
         ).pack(side="left", padx=(8, 0))
 
-        # Card hasil
+        # ── Card hasil deteksi ──
         rc = self._card(main)
-        rc.pack(fill="x", pady=(0, 12))
+        rc.pack(fill="x", pady=(0, 10))
 
         tk.Label(
             rc, text="Hasil Deteksi",
             font=("Segoe UI", 11, "bold"),
             bg="white", fg="#263238"
-        ).pack(anchor="w", padx=15, pady=(12, 4))
+        ).pack(anchor="w", padx=15, pady=(10, 4))
 
         self.result_label = tk.Label(
             rc, text="— Belum ada hasil —",
-            font=("Segoe UI", 18, "bold"),
+            font=("Segoe UI", 16, "bold"),
             bg="white", fg="#90A4AE"
         )
-        self.result_label.pack(pady=(4, 4))
+        self.result_label.pack(pady=(2, 2))
 
         self.confidence_label = tk.Label(
             rc, text="",
-            font=("Segoe UI", 10), bg="white", fg="#78909C"
+            font=("Segoe UI", 9), bg="white", fg="#78909C"
         )
-        self.confidence_label.pack(pady=(0, 12))
+        self.confidence_label.pack(pady=(0, 10))
 
-        # Card metrik
-        mc = self._card(main)
-        mc.pack(fill="x", pady=(0, 12))
+        # ── Card Step 3: CV ──
+        cv_card = self._card(main)
+        cv_card.pack(fill="x", pady=(0, 6))
 
         tk.Label(
-            mc, text="Performa Model (Testing Set)",
-            font=("Segoe UI", 11, "bold"),
-            bg="white", fg="#263238"
-        ).pack(anchor="w", padx=15, pady=(12, 8))
+            cv_card,
+            text="Step 3  —  5-Fold Cross-Validation  (pada Training Set)",
+            font=("Segoe UI", 10, "bold"),
+            bg="white", fg="#1A237E"
+        ).pack(anchor="w", padx=15, pady=(10, 6))
 
-        mi = tk.Frame(mc, bg="white")
-        mi.pack(fill="x", padx=15, pady=(0, 12))
+        cv_inner = tk.Frame(cv_card, bg="white")
+        cv_inner.pack(fill="x", padx=15, pady=(0, 4))
 
         self.metric_labels = {}
+        for i, (name, key) in enumerate([
+            ("Mean CV Accuracy", "cv_mean"),
+            ("Std Deviation",    "cv_std")
+        ]):
+            col = tk.Frame(cv_inner, bg="white")
+            col.grid(row=0, column=i, padx=14, sticky="w")
+            tk.Label(col, text=name, font=("Segoe UI", 9),
+                     bg="white", fg="#78909C").pack()
+            lbl = tk.Label(col, text="—",
+                           font=("Segoe UI", 14, "bold"),
+                           bg="white", fg="#1A237E")
+            lbl.pack()
+            self.metric_labels[key] = lbl
+
+        self.cv_scores_label = tk.Label(
+            cv_card, text="Skor per fold: —",
+            font=("Segoe UI", 9), bg="white", fg="#607D8B"
+        )
+        self.cv_scores_label.pack(anchor="w", padx=15, pady=(2, 10))
+
+        # ── Card Step 4: Final Test ──
+        ft_card = self._card(main)
+        ft_card.pack(fill="x", pady=(0, 10))
+
+        tk.Label(
+            ft_card,
+            text="Step 4  —  Final Test  (pada Testing Set)",
+            font=("Segoe UI", 10, "bold"),
+            bg="white", fg="#1A237E"
+        ).pack(anchor="w", padx=15, pady=(10, 6))
+
+        ft_inner = tk.Frame(ft_card, bg="white")
+        ft_inner.pack(fill="x", padx=15, pady=(0, 10))
+
         for i, (name, key) in enumerate([
             ("Accuracy", "accuracy"), ("Precision", "precision"),
             ("Recall",   "recall"),   ("F1-Score",  "f1")
         ]):
-            col = tk.Frame(mi, bg="white")
+            col = tk.Frame(ft_inner, bg="white")
             col.grid(row=0, column=i, padx=14, sticky="w")
             tk.Label(col, text=name, font=("Segoe UI", 9),
                      bg="white", fg="#78909C").pack()
@@ -163,7 +199,7 @@ class ClickbaitApp:
 
         # ── Tombol bawah ──
         bot = tk.Frame(self.root, bg="#F0F2F5")
-        bot.pack(fill="x", padx=20, pady=(0, 15))
+        bot.pack(fill="x", padx=20, pady=(0, 14))
 
         tk.Button(
             bot, text="📂  Latih Model dari Dataset CSV",
@@ -216,9 +252,25 @@ class ClickbaitApp:
             self.detect_btn.config(state="disabled")
 
     def _update_metrics_display(self):
-        if self.metrics:
-            for key, lbl in self.metric_labels.items():
-                lbl.config(text=f"{self.metrics[key]}%")
+        if not self.metrics:
+            return
+        # Step 4 — Final Test
+        for key in ["accuracy", "precision", "recall", "f1"]:
+            self.metric_labels[key].config(
+                text=f"{self.metrics[key]}%"
+            )
+        # Step 3 — Cross-Validation
+        self.metric_labels["cv_mean"].config(
+            text=f"{self.metrics.get('cv_mean', '—')}%"
+        )
+        self.metric_labels["cv_std"].config(
+            text=f"± {self.metrics.get('cv_std', '—')}%"
+        )
+        cv_scores = self.metrics.get("cv_scores", [])
+        if cv_scores:
+            scores_str = "  |  ".join([f"Fold {i+1}: {s}%"
+                                        for i, s in enumerate(cv_scores)])
+            self.cv_scores_label.config(text=f"Skor per fold: {scores_str}")
 
     # ── Deteksi ──────────────────────────────────────────────
     def _on_enter(self, event):
@@ -272,6 +324,7 @@ class ClickbaitApp:
             self._update_status(False)
             for lbl in self.metric_labels.values():
                 lbl.config(text="—")
+            self.cv_scores_label.config(text="Skor per fold: —")
             self.result_label.config(text="— Belum ada hasil —", fg="#90A4AE")
             self.confidence_label.config(text="")
             messagebox.showinfo("Berhasil", "Model telah dihapus.")
@@ -280,7 +333,7 @@ class ClickbaitApp:
     def _open_train_window(self):
         win = tk.Toplevel(self.root)
         win.title("Latih Model — Clickbait Detector")
-        win.geometry("520x400")
+        win.geometry("540x440")
         win.resizable(False, False)
         win.configure(bg="#F0F2F5")
         win.grab_set()
@@ -289,16 +342,15 @@ class ClickbaitApp:
             win, text="Latih Model dari Dataset CSV",
             font=("Segoe UI", 13, "bold"),
             bg="#F0F2F5", fg="#1A237E"
-        ).pack(pady=(20, 4))
+        ).pack(pady=(18, 4))
 
         tk.Label(
             win,
-            text="Dataset CSV harus memiliki kolom:\n"
-                 "'headline'  (teks judul berita)   dan   "
-                 "'clickbait'  (0 = non-clickbait, 1 = clickbait)",
+            text="Alur: Split → Training → 5-Fold CV (training set) → Final Test\n"
+                 "Dataset CSV: kolom 'headline' dan 'clickbait' (0/1)",
             font=("Segoe UI", 9), bg="#F0F2F5",
             fg="#546E7A", justify="center"
-        ).pack(pady=(0, 14))
+        ).pack(pady=(0, 12))
 
         # Pilih file
         ff = tk.Frame(win, bg="#F0F2F5")
@@ -328,10 +380,10 @@ class ClickbaitApp:
 
         # Log box
         lf = tk.Frame(win, bg="#F0F2F5")
-        lf.pack(fill="both", expand=True, padx=24, pady=14)
+        lf.pack(fill="both", expand=True, padx=24, pady=12)
 
         log_box = tk.Text(
-            lf, height=8, font=("Consolas", 9),
+            lf, height=10, font=("Consolas", 9),
             bg="#263238", fg="#80CBC4",
             relief="flat", state="disabled", padx=8, pady=6
         )
@@ -343,14 +395,14 @@ class ClickbaitApp:
             log_box.insert("end", msg)
             log_box.config(state="disabled")
 
-        # Tombol mulai
+        # Tombol
         train_btn = tk.Button(
             win, text="  Mulai Pelatihan  ",
             font=("Segoe UI", 11, "bold"),
             bg="#1A237E", fg="white", activebackground="#283593",
             relief="flat", cursor="hand2", padx=10, pady=7
         )
-        train_btn.pack(pady=(0, 18))
+        train_btn.pack(pady=(0, 16))
 
         def on_done(success, result):
             train_btn.config(state="normal")
@@ -358,31 +410,36 @@ class ClickbaitApp:
                 self.model, self.metrics = load_model()
                 self._update_status(True)
                 self._update_metrics_display()
+
+                cv_str = "  |  ".join(
+                    [f"F{i+1}:{s}%" for i, s in enumerate(result['cv_scores'])]
+                )
                 write_log(
-                    f"✅ Pelatihan selesai!\n\n"
+                    f"✅ Semua tahapan selesai!\n\n"
+                    f"── Step 3: Cross-Validation (Training Set) ──\n"
+                    f"  Scores  : {cv_str}\n"
+                    f"  Mean    : {result['cv_mean']}%\n"
+                    f"  Std Dev : ± {result['cv_std']}%\n\n"
+                    f"── Step 4: Final Test (Testing Set) ─────────\n"
                     f"  Accuracy  : {result['accuracy']}%\n"
                     f"  Precision : {result['precision']}%\n"
                     f"  Recall    : {result['recall']}%\n"
                     f"  F1-Score  : {result['f1']}%\n\n"
-                    f"  Train size: {result['train_size']} data\n"
-                    f"  Test size : {result['test_size']} data\n\n"
-                    f"File tersimpan:\n"
-                    f"  → saved_model.pkl\n"
-                    f"  → saved_metrics.pkl\n\n"
-                    f"Upload kedua file tersebut ke GitHub\n"
-                    f"agar Streamlit bisa langsung dipakai."
+                    f"  Train: {result['train_size']} data  |  "
+                    f"Test: {result['test_size']} data\n\n"
+                    f"Upload saved_model.pkl & saved_metrics.pkl ke GitHub."
                 )
                 messagebox.showinfo(
                     "Training Selesai",
-                    f"Model berhasil dilatih dan disimpan!\n\n"
-                    f"Accuracy  : {result['accuracy']}%\n"
-                    f"Precision : {result['precision']}%\n"
-                    f"Recall    : {result['recall']}%\n"
-                    f"F1-Score  : {result['f1']}%\n\n"
-                    f"Selanjutnya upload:\n"
-                    f"  saved_model.pkl\n"
-                    f"  saved_metrics.pkl\n"
-                    f"ke GitHub repo Streamlit kamu.",
+                    f"Step 3 — Cross-Validation\n"
+                    f"  Mean CV : {result['cv_mean']}%\n"
+                    f"  Std Dev : ± {result['cv_std']}%\n\n"
+                    f"Step 4 — Final Test\n"
+                    f"  Accuracy  : {result['accuracy']}%\n"
+                    f"  Precision : {result['precision']}%\n"
+                    f"  Recall    : {result['recall']}%\n"
+                    f"  F1-Score  : {result['f1']}%\n\n"
+                    f"Upload .pkl ke GitHub untuk Streamlit.",
                     parent=win
                 )
             else:
@@ -392,14 +449,20 @@ class ClickbaitApp:
         def start():
             csv_path = path_var.get().strip()
             if not csv_path:
-                messagebox.showwarning(
-                    "Pilih File",
-                    "Pilih file CSV terlebih dahulu.",
-                    parent=win
-                )
+                messagebox.showwarning("Pilih File",
+                                       "Pilih file CSV terlebih dahulu.",
+                                       parent=win)
                 return
             train_btn.config(state="disabled")
-            write_log("⏳ Memulai proses pelatihan...\n")
+            write_log(
+                "⏳ Memulai proses...\n\n"
+                "  Step 1 : Split dataset (80:20)\n"
+                "  Step 2 : Training model\n"
+                "  Step 3 : 5-Fold CV pada training set\n"
+                "  Step 4 : Final test pada testing set\n\n"
+                "Estimasi waktu: 20-40 menit.\n"
+                "Harap tunggu dan jangan tutup aplikasi."
+            )
             threading.Thread(
                 target=_run_training,
                 args=(csv_path, win, write_log, on_done),
