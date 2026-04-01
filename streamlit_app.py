@@ -1,10 +1,8 @@
 # ============================================================
 #  streamlit_app.py  —  Aplikasi Demo (Streamlit)
 #
-#  TUJUAN: Demo deteksi clickbait untuk sidang skripsi.
-#  Tidak ada fitur training di sini.
-#  Model dibaca langsung dari saved_model.pkl yang sudah
-#  di-commit ke GitHub setelah training di VSCode.
+#  Model dibaca dari saved_model.pkl (hasil training VSCode).
+#  Menampilkan metrik: CV (Step 3) + Final Test (Step 4).
 #
 #  Jalankan lokal : streamlit run streamlit_app.py
 #  Deploy         : https://streamlit.io/cloud
@@ -16,7 +14,7 @@ from model_utils import load_model, model_exists, predict
 
 # ── Konfigurasi halaman ──────────────────────────────────────
 st.set_page_config(
-    page_title="Clickbait Detector",
+    page_title="Deteksi Clickbait",
     page_icon="🔍",
     layout="centered",
 )
@@ -24,92 +22,112 @@ st.set_page_config(
 # ── CSS ──────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Sembunyikan menu hamburger dan footer default Streamlit */
     #MainMenu { visibility: hidden; }
     footer    { visibility: hidden; }
 
     .main-header {
         background: linear-gradient(135deg, #1A237E, #3949AB);
         color: white;
-        padding: 30px 32px;
+        padding: 28px 32px;
         border-radius: 16px;
-        margin-bottom: 30px;
+        margin-bottom: 20px;
         text-align: center;
     }
-    .main-header h1 { margin: 0; font-size: 2rem; letter-spacing: 1px; }
-    .main-header p  { margin: 8px 0 0; opacity: 0.85; font-size: 0.95rem; }
+    .main-header h1 { margin: 0; font-size: 1.9rem; letter-spacing: 1px; }
+    .main-header p  { margin: 8px 0 0; opacity: 0.85; font-size: 0.9rem; }
 
+    .step-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #78909C;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 16px 0 8px 0;
+    }
+
+    /* Metrik final test */
     .metric-box {
         background: #F0F4FF;
         border: 1px solid #C5CAE9;
         border-radius: 12px;
-        padding: 16px 10px;
+        padding: 14px 8px;
         text-align: center;
     }
     .metric-box .val {
-        font-size: 1.7rem;
+        font-size: 1.55rem;
         font-weight: 700;
         color: #1A237E;
         line-height: 1.2;
     }
     .metric-box .lbl {
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         color: #546E7A;
         margin-top: 4px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
+    /* Metrik cross-validation */
+    .cv-box {
+        background: #F3F3FF;
+        border: 1px solid #C5CAE9;
+        border-radius: 12px;
+        padding: 14px 16px;
+        text-align: center;
+    }
+    .cv-box .cv-val {
+        font-size: 1.55rem;
+        font-weight: 700;
+        color: #283593;
+    }
+    .cv-box .cv-lbl {
+        font-size: 0.72rem;
+        color: #546E7A;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+    }
+
+    /* Hasil deteksi */
     .result-clickbait {
         background: #FFF3F3;
         border: 1.5px solid #EF9A9A;
         border-left: 6px solid #C62828;
         border-radius: 12px;
-        padding: 22px 26px;
-        margin-top: 18px;
+        padding: 20px 24px;
+        margin-top: 16px;
     }
-    .result-clickbait h2 { color: #C62828; margin: 0 0 8px; font-size: 1.5rem; }
-    .result-clickbait p  { color: #B71C1C; margin: 0; font-size: 0.95rem; line-height: 1.6; }
+    .result-clickbait h2 { color: #C62828; margin: 0 0 8px; font-size: 1.35rem; }
+    .result-clickbait p  { color: #B71C1C; margin: 0; font-size: 0.92rem; line-height: 1.6; }
 
     .result-nonclickbait {
         background: #F1FFF3;
         border: 1.5px solid #A5D6A7;
         border-left: 6px solid #2E7D32;
         border-radius: 12px;
-        padding: 22px 26px;
-        margin-top: 18px;
+        padding: 20px 24px;
+        margin-top: 16px;
     }
-    .result-nonclickbait h2 { color: #2E7D32; margin: 0 0 8px; font-size: 1.5rem; }
-    .result-nonclickbait p  { color: #1B5E20; margin: 0; font-size: 0.95rem; line-height: 1.6; }
-
-    .info-box {
-        background: #FFFDE7;
-        border: 1px solid #FDD835;
-        border-radius: 10px;
-        padding: 14px 18px;
-        font-size: 0.9rem;
-        color: #F57F17;
-    }
+    .result-nonclickbait h2 { color: #2E7D32; margin: 0 0 8px; font-size: 1.35rem; }
+    .result-nonclickbait p  { color: #1B5E20; margin: 0; font-size: 0.92rem; line-height: 1.6; }
 
     div[data-testid="stButton"] > button {
         border-radius: 10px;
         font-weight: 600;
-        padding: 0.5rem 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Muat model (satu kali per sesi) ─────────────────────────
+# ── Muat model satu kali per sesi ───────────────────────────
 if "model" not in st.session_state:
     st.session_state.model   = None
     st.session_state.metrics = None
 
-if st.session_state.model is None:
-    if model_exists():
-        model, metrics = load_model()
-        st.session_state.model   = model
-        st.session_state.metrics = metrics
+if st.session_state.model is None and model_exists():
+    model, metrics = load_model()
+    st.session_state.model   = model
+    st.session_state.metrics = metrics
 
 
 # ── Header ───────────────────────────────────────────────────
@@ -122,7 +140,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Sidebar — info model ─────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📊 Informasi Model")
     st.divider()
@@ -139,33 +157,80 @@ with st.sidebar:
 |---|---|
 | Algoritma | Gradient Boosting |
 | Fitur | TF-IDF Char N-gram |
-| ngram_range | (3, 5) |
-| n_estimators | 1000 |
-| learning_rate | 0.1 |
-| max_depth | 3 |
-| Train/Test | 80% / 20% |
-| random_state | 42 |
+| ngram\_range | (3, 5) |
+| min\_df | 5 |
+| n\_estimators | 1000 |
+| learning\_rate | 0.1 |
+| max\_depth | 3 |
+| random\_state | 42 |
+| Split | 80% / 20% |
 """)
 
     st.divider()
-    st.markdown("### 🔄 Preprocessing")
+    st.markdown("### 🔄 Alur Training")
     st.markdown("""
-1. Konversi ke huruf kecil
-2. Normalisasi spasi
+1. Split dataset (80:20)
+2. Training pada training set
+3. 5-Fold CV pada training set
+4. Final test pada testing set
 """)
 
     st.divider()
-    st.caption(
-        "Model dilatih secara lokal menggunakan VSCode, "
-        "lalu di-deploy ke Streamlit Cloud via GitHub."
-    )
+    st.markdown("### 🔤 Preprocessing")
+    st.markdown("1. Konversi ke huruf kecil\n2. Normalisasi spasi")
+
+    st.divider()
+    st.caption("Model dilatih di VSCode lalu di-deploy via GitHub.")
 
 
 # ── Panel metrik ─────────────────────────────────────────────
 if st.session_state.metrics:
     m = st.session_state.metrics
-    c1, c2, c3, c4 = st.columns(4)
 
+    # ── Step 3: Cross-Validation ──
+    st.markdown(
+        '<p class="step-label">Step 3 — 5-Fold Cross-Validation '
+        '(pada Training Set)</p>',
+        unsafe_allow_html=True
+    )
+
+    cv_scores = m.get("cv_scores", [])
+    cv_mean   = m.get("cv_mean",   "—")
+    cv_std    = m.get("cv_std",    "—")
+
+    col_mean, col_std = st.columns(2)
+    with col_mean:
+        st.markdown(f"""
+        <div class="cv-box">
+            <div class="cv-lbl">Mean CV Accuracy</div>
+            <div class="cv-val">{cv_mean}%</div>
+        </div>""", unsafe_allow_html=True)
+    with col_std:
+        st.markdown(f"""
+        <div class="cv-box">
+            <div class="cv-lbl">Std Deviation</div>
+            <div class="cv-val">± {cv_std}%</div>
+        </div>""", unsafe_allow_html=True)
+
+    if cv_scores:
+        scores_str = "   |   ".join(
+            [f"Fold {i+1}: {s}%" for i, s in enumerate(cv_scores)]
+        )
+        st.markdown(
+            f"<p style='text-align:center;color:#607D8B;"
+            f"font-size:0.79rem;font-family:monospace;margin-top:8px;'>"
+            f"{scores_str}</p>",
+            unsafe_allow_html=True
+        )
+
+    # ── Step 4: Final Test ──
+    st.markdown(
+        '<p class="step-label">Step 4 — Final Test '
+        '(pada Testing Set)</p>',
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
     for col, val, label in zip(
         [c1, c2, c3, c4],
         [m["accuracy"], m["precision"], m["recall"], m["f1"]],
@@ -179,26 +244,24 @@ if st.session_state.metrics:
             </div>""", unsafe_allow_html=True)
 
     st.markdown(
-        f"<p style='text-align:center; color:#78909C; font-size:0.8rem; margin-top:8px;'>"
-        f"Dievaluasi pada {m['test_size']:,} data testing  •  "
-        f"Dilatih pada {m['train_size']:,} data training</p>",
+        f"<p style='text-align:center;color:#90A4AE;font-size:0.77rem;"
+        f"margin-top:6px;'>"
+        f"Train: {m['train_size']:,} data  •  "
+        f"Test: {m['test_size']:,} data  •  "
+        f"Total: {m['total_size']:,} data</p>",
         unsafe_allow_html=True
     )
     st.divider()
 
 
-# ── Input & deteksi ──────────────────────────────────────────
+# ── Input & Deteksi ──────────────────────────────────────────
 if not st.session_state.model:
-    st.markdown("""
-    <div class="info-box">
-        ⚠️ <strong>Model tidak ditemukan.</strong><br>
-        File <code>saved_model.pkl</code> dan <code>saved_metrics.pkl</code>
-        belum ada di repository GitHub. Lakukan training terlebih dahulu
-        melalui <code>app.py</code> di VSCode, kemudian upload kedua file
-        tersebut ke GitHub.
-    </div>
-    """, unsafe_allow_html=True)
-
+    st.warning(
+        "⚠️ **Model tidak ditemukan.**  \n"
+        "File `saved_model.pkl` dan `saved_metrics.pkl` belum ada "
+        "di repository. Lakukan training via `app.py` di VSCode, "
+        "kemudian upload kedua file tersebut ke GitHub."
+    )
 else:
     st.markdown("#### ✍️ Masukkan Judul Berita")
     st.caption("Masukkan judul berita berbahasa Inggris untuk dideteksi.")
@@ -206,7 +269,7 @@ else:
     headline = st.text_area(
         label="input",
         placeholder='Contoh: "You Won\'t Believe What Happened Next..."',
-        height=120,
+        height=110,
         label_visibility="collapsed"
     )
 
@@ -218,10 +281,7 @@ else:
             type="primary"
         )
     with col_clear:
-        clear_clicked = st.button(
-            "🗑  Hapus",
-            use_container_width=True
-        )
+        clear_clicked = st.button("🗑  Hapus", use_container_width=True)
 
     if clear_clicked:
         st.rerun()
@@ -238,27 +298,22 @@ else:
                 st.markdown(f"""
                 <div class="result-clickbait">
                     <h2>⚠️ CLICKBAIT</h2>
-                    <p>
-                        Tingkat keyakinan model: <strong>{res['confidence']}%</strong><br>
-                        Judul ini <strong>terindikasi sebagai clickbait</strong>.
-                        Judul tersebut kemungkinan besar dirancang untuk memancing
-                        klik tanpa mencerminkan isi konten yang sebenarnya.
-                    </p>
+                    <p>Tingkat keyakinan model: <strong>{res['confidence']}%</strong><br>
+                    Judul ini <strong>terindikasi sebagai clickbait</strong>.
+                    Kemungkinan besar dirancang untuk memancing klik
+                    tanpa mencerminkan isi konten yang sebenarnya.</p>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class="result-nonclickbait">
                     <h2>✅ NON-CLICKBAIT</h2>
-                    <p>
-                        Tingkat keyakinan model: <strong>{res['confidence']}%</strong><br>
-                        Judul ini <strong>tidak terindikasi sebagai clickbait</strong>.
-                        Judul tersebut kemungkinan besar bersifat informatif dan
-                        mencerminkan isi konten secara akurat.
-                    </p>
+                    <p>Tingkat keyakinan model: <strong>{res['confidence']}%</strong><br>
+                    Judul ini <strong>tidak terindikasi sebagai clickbait</strong>.
+                    Kemungkinan besar bersifat informatif dan
+                    mencerminkan isi konten secara akurat.</p>
                 </div>""", unsafe_allow_html=True)
 
-            # Detail preprocessing
-            with st.expander("🔎 Lihat detail preprocessing"):
+            with st.expander("🔎 Detail preprocessing"):
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.markdown("**Input asli:**")
@@ -270,21 +325,19 @@ else:
     # ── Contoh judul ─────────────────────────────────────────
     with st.expander("💡 Contoh judul untuk dicoba"):
         st.markdown("**Kemungkinan Clickbait:**")
-        examples_cb = [
+        for ex in [
             "You Won't Believe What This Dog Did Next",
             "10 Shocking Secrets Doctors Don't Want You to Know",
             "This Simple Trick Will Change Your Life Forever",
             "What Happens Next Will Leave You Speechless",
-        ]
-        for ex in examples_cb:
+        ]:
             st.code(ex, language="text")
 
         st.markdown("**Kemungkinan Non-Clickbait:**")
-        examples_ncb = [
+        for ex in [
             "President Signs New Climate Change Bill Into Law",
             "Scientists Discover New Species of Deep-Sea Fish",
             "Federal Reserve Raises Interest Rates by 0.25 Percent",
             "Apple Reports Record Quarterly Revenue of 90 Billion Dollars",
-        ]
-        for ex in examples_ncb:
+        ]:
             st.code(ex, language="text")
